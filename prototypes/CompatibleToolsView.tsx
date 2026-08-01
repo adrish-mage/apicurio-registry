@@ -1,8 +1,46 @@
 import { useState, useMemo } from "react";
 import { CheckCircle2, XCircle, AlertTriangle, ArrowRight, Wrench } from "lucide-react";
 
-const MOCK_TOOLS = [
+interface JsonSchemaProperty {
+  type: string;
+  description?: string;
+}
+
+interface JsonSchema {
+  properties: Record<string, JsonSchemaProperty>;
+  required?: string[];
+}
+
+interface MCPToolSearchResult {
+  groupId: string;
+  artifactId: string;
+  name: string;
+  title?: string;
+  description?: string;
+  parameters?: string[];
+  inputSchema: JsonSchema;
+  outputSchema: JsonSchema;
+}
+
+interface TypeMismatch {
+  field: string;
+  outType: string;
+  inType: string;
+}
+
+interface CompatibilityResult {
+  status: "compatible" | "partial" | "incompatible";
+  matched: string[];
+  missing: string[];
+  typeMismatches: TypeMismatch[];
+  requiredInputs: string[];
+}
+
+
+const MOCK_TOOLS: MCPToolSearchResult[] = [
   {
+    groupId: "default",
+    artifactId: "search-documents",
     name: "search_documents",
     title: "Search Documents",
     description: "Searches the document store and returns matching document IDs.",
@@ -22,6 +60,8 @@ const MOCK_TOOLS = [
     },
   },
   {
+    groupId: "default",
+    artifactId: "fetch-document",
     name: "fetch_document",
     title: "Fetch Document",
     description: "Fetches the full content of a document by ID.",
@@ -40,6 +80,8 @@ const MOCK_TOOLS = [
     },
   },
   {
+    groupId: "default",
+    artifactId: "summarize-text",
     name: "summarize_text",
     title: "Summarize Text",
     description: "Summarizes a block of text into a shorter form.",
@@ -58,6 +100,8 @@ const MOCK_TOOLS = [
     },
   },
   {
+    groupId: "default",
+    artifactId: "translate-text",
     name: "translate_text",
     title: "Translate Text",
     description: "Translates text into a target language.",
@@ -77,14 +121,17 @@ const MOCK_TOOLS = [
   },
 ];
 
-function checkCompatibility(sourceTool, targetTool) {
+function checkCompatibility(
+  sourceTool: MCPToolSearchResult,
+  targetTool: MCPToolSearchResult
+): CompatibilityResult {
   const outputProps = sourceTool.outputSchema?.properties || {};
   const requiredInputs = targetTool.inputSchema?.required || [];
   const inputProps = targetTool.inputSchema?.properties || {};
 
-  const matched = [];
-  const missing = [];
-  const typeMismatches = [];
+  const matched: string[] = [];
+  const missing: string[] = [];
+  const typeMismatches: TypeMismatch[] = [];
 
   requiredInputs.forEach((fieldName) => {
     const outField = outputProps[fieldName];
@@ -98,7 +145,7 @@ function checkCompatibility(sourceTool, targetTool) {
     }
   });
 
-  let status = "compatible";
+  let status: CompatibilityResult["status"] = "compatible";
   if (missing.length > 0 || typeMismatches.length > 0) {
     status = missing.length > 0 ? "incompatible" : "partial";
   }
@@ -106,13 +153,34 @@ function checkCompatibility(sourceTool, targetTool) {
   return { status, matched, missing, typeMismatches, requiredInputs };
 }
 
-const STATUS_STYLES = {
-  compatible: { icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-200", label: "Compatible" },
-  partial: { icon: AlertTriangle, color: "text-amber-600", bg: "bg-amber-50", border: "border-amber-200", label: "Type mismatch" },
-  incompatible: { icon: XCircle, color: "text-red-600", bg: "bg-red-50", border: "border-red-200", label: "Incompatible" },
+const STATUS_STYLES: Record<
+  CompatibilityResult["status"],
+  { icon: typeof CheckCircle2; color: string; bg: string; border: string; label: string }
+> = {
+  compatible: {
+    icon: CheckCircle2,
+    color: "text-emerald-600",
+    bg: "bg-emerald-50",
+    border: "border-emerald-200",
+    label: "Compatible",
+  },
+  partial: {
+    icon: AlertTriangle,
+    color: "text-amber-600",
+    bg: "bg-amber-50",
+    border: "border-amber-200",
+    label: "Type mismatch",
+  },
+  incompatible: {
+    icon: XCircle,
+    color: "text-red-600",
+    bg: "bg-red-50",
+    border: "border-red-200",
+    label: "Incompatible",
+  },
 };
 
-function SchemaBadge({ type }) {
+function SchemaBadge({ type }: { type: string }) {
   return (
     <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
       {type}
@@ -120,7 +188,13 @@ function SchemaBadge({ type }) {
   );
 }
 
-function ToolCompatRow({ source, target }) {
+function ToolCompatRow({
+  source,
+  target,
+}: {
+  source: MCPToolSearchResult;
+  target: MCPToolSearchResult;
+}) {
   const result = useMemo(() => checkCompatibility(source, target), [source, target]);
   const style = STATUS_STYLES[result.status];
   const Icon = style.icon;
@@ -156,10 +230,13 @@ function ToolCompatRow({ source, target }) {
                   <CheckCircle2 size={13} className="text-emerald-500 shrink-0" />
                 )}
                 <span className="font-mono text-slate-700">{field}</span>
-                {isMissing && <span className="text-red-500">— not produced by {source.name}</span>}
+                {isMissing && (
+                  <span className="text-red-500">— not produced by {source.name}</span>
+                )}
                 {mismatch && (
                   <span className="flex items-center gap-1 text-amber-600">
-                    <SchemaBadge type={mismatch.outType} /> <ArrowRight size={10} /> <SchemaBadge type={mismatch.inType} />
+                    <SchemaBadge type={mismatch.outType} /> <ArrowRight size={10} />{" "}
+                    <SchemaBadge type={mismatch.inType} />
                   </span>
                 )}
               </div>
@@ -172,8 +249,8 @@ function ToolCompatRow({ source, target }) {
 }
 
 export default function CompatibleToolsView() {
-  const [sourceName, setSourceName] = useState(MOCK_TOOLS[0].name);
-  const sourceTool = MOCK_TOOLS.find((t) => t.name === sourceName);
+  const [sourceName, setSourceName] = useState<string>(MOCK_TOOLS[0].name);
+  const sourceTool = MOCK_TOOLS.find((t) => t.name === sourceName) as MCPToolSearchResult;
   const otherTools = MOCK_TOOLS.filter((t) => t.name !== sourceName);
 
   return (
@@ -183,10 +260,16 @@ export default function CompatibleToolsView() {
           <h1 className="text-xl font-semibold text-slate-900 mb-1">Compatible Tools</h1>
           <p className="text-sm text-slate-500">
             Prototype for Apicurio Registry issue{" "}
-            <a href="https://github.com/Apicurio/apicurio-registry/issues/8427" className="underline text-blue-600" target="_blank" rel="noreferrer">
+            <a
+              href="https://github.com/Apicurio/apicurio-registry/issues/8427"
+              className="underline text-blue-600"
+              target="_blank"
+              rel="noreferrer"
+            >
               #8427
             </a>{" "}
-            — given a tool's output schema, show which other registered tools can consume it as input.
+            — given a tool's output schema, show which other registered tools can consume it as
+            input.
           </p>
         </div>
 
@@ -208,7 +291,10 @@ export default function CompatibleToolsView() {
           <p className="text-xs text-slate-500 mt-2">{sourceTool.description}</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {Object.entries(sourceTool.outputSchema.properties).map(([field, def]) => (
-              <span key={field} className="text-[11px] font-mono bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-slate-600">
+              <span
+                key={field}
+                className="text-[11px] font-mono bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-slate-600"
+              >
                 {field}: {def.type}
               </span>
             ))}
